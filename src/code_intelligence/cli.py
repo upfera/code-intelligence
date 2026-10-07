@@ -32,8 +32,8 @@ def setup() -> None:
     exclude = input("Repositories to exclude []: ").strip()
 
     config = EXAMPLE.read_text()
-    config = config.replace("organization: upfera", f"organization: {organization}")
-    config = config.replace("root: ~/code/github/upfera", f"root: {root}")
+    config = config.replace("organization: your-org", f"organization: {organization}")
+    config = config.replace("root: ~/code/github/your-org", f"root: {root}")
     config = config.replace('    - "*"\n  exclude: []', f'    - "{include}"\n  exclude: [{exclude}]')
 
     DEFAULT_CONFIG.parent.mkdir(parents=True, exist_ok=True)
