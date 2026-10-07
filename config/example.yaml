@@ -1,8 +1,8 @@
 github:
-  organization: upfera
+  organization: your-org
 
 repositories:
-  root: ~/code/github/upfera
+  root: ~/code/github/your-org
   include:
     - "*"
   exclude: []
