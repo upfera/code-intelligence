@@ -14,11 +14,31 @@ EXAMPLE = Path(__file__).resolve().parents[2] / "config" / "example.yaml"
 
 
 def setup() -> None:
-    DEFAULT_CONFIG.parent.mkdir(parents=True, exist_ok=True)
     if DEFAULT_CONFIG.exists():
         print(DEFAULT_CONFIG)
         return
-    DEFAULT_CONFIG.write_text(EXAMPLE.read_text())
+
+    print("Code Intelligence setup")
+    print()
+
+    organization = input("GitHub organization: ").strip()
+    if not organization:
+        raise SystemExit("GitHub organization is required")
+
+    root_default = f"~/code/github/{organization}"
+    root = input(f"Repository root [{root_default}]: ").strip() or root_default
+
+    include = input('Repositories to include [*]: ').strip() or "*"
+    exclude = input("Repositories to exclude []: ").strip()
+
+    config = EXAMPLE.read_text()
+    config = config.replace("organization: upfera", f"organization: {organization}")
+    config = config.replace("root: ~/code/github/upfera", f"root: {root}")
+    config = config.replace('    - "*"\n  exclude: []', f'    - "{include}"\n  exclude: [{exclude}]')
+
+    DEFAULT_CONFIG.parent.mkdir(parents=True, exist_ok=True)
+    DEFAULT_CONFIG.write_text(config)
+    print()
     print(f"Created {DEFAULT_CONFIG}")
 
 
