@@ -46,17 +46,28 @@ def update(config: Config, repo: Repository) -> tuple[Path, str]:
     if status.stdout.strip():
         return target, "dirty"
 
+    before = _git(target, "rev-parse", "HEAD")
+    if before.returncode:
+        return target, "invalid"
+    old_head = before.stdout.strip()
+
     result = _git(target, "fetch", "--prune", "origin")
     if result.returncode:
         return target, "fetch-failed"
 
     result = _git(target, "pull", "--ff-only", "origin", repo.default_branch)
-    return target, "updated" if result.returncode == 0 else "pull-failed"
+    if result.returncode:
+        return target, "pull-failed"
+
+    after = _git(target, "rev-parse", "HEAD")
+    if after.returncode:
+        return target, "invalid"
+    return target, "updated" if after.stdout.strip() != old_head else "unchanged"
 
 def sync(config: Config) -> list[tuple[Repository, Path, str]]:
     results = []
     for repo in list_repositories(config.organization):
-        if repo.archived or not selected(repo, config):
+        if repo.archived or repo.fork or not selected(repo, config):
             continue
         path, state = update(config, repo)
         results.append((repo, path, state))
