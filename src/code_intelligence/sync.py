@@ -13,8 +13,8 @@ def selected(repo: Repository, config: Config) -> bool:
     return included and not excluded
 
 def repo_path(config: Config, repo: Repository) -> Path:
-    # repository_root is the configured GitHub organization root.
-    return config.repository_root / repo.name
+    # repository_root is the parent directory for all GitHub organizations.
+    return config.repository_root / config.organization / repo.name
 
 def _git(path: Path, *args: str) -> subprocess.CompletedProcess[str]:
     return subprocess.run(
