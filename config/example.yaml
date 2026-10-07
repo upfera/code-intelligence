@@ -1,0 +1,24 @@
+github:
+  organization: upfera
+
+repositories:
+  root: ~/code/github
+  include:
+    - "*"
+  exclude:
+    - ".github"
+    - ".private"
+    - "archive-*"
+
+git:
+  protocol: ssh
+
+indexers:
+  cbm:
+    enabled: true
+    command: codebase-memory-mcp
+  serena:
+    enabled: false
+
+tools:
+  auto_update: false
