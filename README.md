@@ -1,19 +1,12 @@
 # code-intelligence
 
-Local repository synchronization and code-intelligence orchestration for GitHub organizations.
+Local GitHub repository synchronization and code-intelligence orchestration.
 
-The project keeps a configured set of GitHub repositories available locally and can maintain code-intelligence indexes such as Codebase Memory MCP. It is designed to run as a normal user process. Root access is only used when explicitly requested for system package installation.
+The intended model is:
 
-## Goals
-
-- Discover repositories from a GitHub organization.
-- Select repositories with glob-style include/exclude patterns.
-- Clone missing repositories and fast-forward existing clones.
-- Keep repository layout deterministic.
-- Install and update local developer tools.
-- Index synchronized repositories with Codebase Memory MCP.
-- Provide a small CLI now and an MCP interface for agents.
-- Keep tool-specific logic behind adapters so additional indexers can be added later.
+- **Codebase Memory (CBM)** is persistent and pre-indexes the default branch of every selected repository.
+- **Serena** is installed once but started for the active OpenHands task/workspace. It sees the exact checkout and agent changes.
+- Repository synchronization is deterministic and safe for normal user operation.
 
 ## Quick start
 
@@ -21,30 +14,25 @@ Requirements:
 
 - Python 3.11+
 - git
-- GitHub CLI (gh) authenticated for the target organization
-- uv for installing the project and managed Python tools
+- GitHub CLI (`gh`) authenticated to the target organization
 
-Install:
+From a checkout of this repository:
 
-    git clone https://github.com/upfera/code-intelligence.git
-    cd code-intelligence
-    uv tool install .
-
-Create a configuration:
-
-    code-intelligence setup
-
-Edit:
-
-    ~/.config/code-intelligence/config.yaml
+    python3 -m venv .venv
+    . .venv/bin/activate
+    python -m pip install -e .
 
 Then:
 
-    code-intelligence doctor
-    code-intelligence tools update
-    code-intelligence sync
+    code-intelligence bootstrap
+
+The bootstrap installs the optional code-intelligence tools, creates the user configuration, synchronizes the selected repositories, and pre-indexes them with CBM.
 
 ## Configuration
+
+Default configuration:
+
+    ~/.config/code-intelligence/config.yaml
 
 Example:
 
@@ -52,93 +40,66 @@ Example:
       organization: upfera
 
     repositories:
-      root: ~/code/github
-
+      root: ~/code/github/upfera
       include:
         - "*"
+      exclude: []
 
-      exclude:
-        - ".github"
-        - ".private"
-        - "archive-*"
+    git:
+      protocol: ssh
 
     indexers:
       cbm:
         enabled: true
-
+        command: codebase-memory-mcp
       serena:
-        enabled: false
+        enabled: true
 
-Patterns use standard shell-style wildcards (*, ?, [seq]) and are matched against repository names.
+## Commands
 
-An empty include list means all repositories. Excludes always win.
+    code-intelligence setup
+    code-intelligence doctor
+    code-intelligence tools-install
+    code-intelligence tools-update
+    code-intelligence sync
+    code-intelligence index
+    code-intelligence bootstrap
 
-## Repository lifecycle
+`sync` only synchronizes repositories. `index` synchronizes first and then pre-indexes selected clean repositories with CBM.
 
-For each selected GitHub repository:
+## Indexing model
 
-1. Discover it through gh.
-2. Clone it when it does not exist locally.
-3. Fetch and fast-forward the default branch when it already exists.
-4. Leave local changes untouched and report the repository as skipped.
-5. Run enabled indexers.
+CBM indexes the repository's **default branch** in the canonical local checkout:
 
-The synchronizer does not delete local repositories when they disappear from GitHub or from the configuration.
+    ~/code/github/upfera/<repo>
 
-## User vs root
+This is the persistent organization-wide code intelligence corpus.
 
-The default installation is user-scoped:
+Serena is deliberately **not** pre-indexed for every repository. OpenHands should start Serena against the active task workspace, for example:
 
-- configuration: ~/.config/code-intelligence
-- application state: ~/.local/share/code-intelligence
-- logs/state: ~/.local/state/code-intelligence
-- repositories: configured explicitly
-- CBM data remains in CBM's own cache directory
+    ~/workspace/project/<conversation-id>
 
-The project never runs sudo implicitly.
+This gives the semantic layer the exact current workspace state, including uncommitted agent changes.
 
-## Codebase Memory MCP
+## Safety
 
-When enabled, the CBM adapter invokes the installed codebase-memory-mcp CLI:
+- Runs as the normal user.
+- Never implicitly uses sudo.
+- Does not delete repositories that disappear from GitHub.
+- Does not overwrite dirty local repositories.
+- CBM is persistent; Serena is task-scoped.
 
-    codebase-memory-mcp cli index_repository --repo-path /absolute/path/to/repo
+## Architecture
 
-This makes the repository synchronizer independent from the CBM installation mechanism.
-
-## MCP
-
-The project also exposes an MCP server over stdio:
-
-    code-intelligence mcp
-
-Initial tools:
-
-- list_repositories
-- sync_repository
-- sync_all
-- get_repository_status
-- index_repository
-
-The MCP layer is intentionally thin. Core synchronization and indexing logic is shared with the CLI.
-
-## Design
-
+    GitHub
+       |
+       v
     code-intelligence
-           |
-      +----+----+
-      |         |
-     CLI       MCP
-      |         |
-      +----+----+
-           |
-       core services
-      /      |       \
-   GitHub   Git    indexers
-                    /    \
-                  CBM   Serena
+       |
+       +--> sync --> ~/code/github/upfera/*
+       |
+       +--> CBM --> persistent index of default branches
+       |
+       +--> Serena --> launched by the active agent/task for its workspace
 
-Serena is an agent-facing semantic layer and is not started as one long-running process per repository. Its integration is therefore kept separate from the repository synchronization lifecycle.
-
-## Status
-
-Initial implementation. Future iterations can add scheduled synchronization via systemd timer, optional GitHub webhooks, richer tool version management, Serena project management, SCIP/LSP adapters, and cross-repository intelligence.
+The MCP interface remains intentionally thin and should call the same core services as the CLI.
