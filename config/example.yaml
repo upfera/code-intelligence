@@ -2,7 +2,7 @@ github:
   organization: your-org
 
 repositories:
-  root: ~/code/github/your-org
+  root: ~/code/github
   include:
     - "*"
   exclude: []
