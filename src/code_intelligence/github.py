@@ -11,7 +11,7 @@ class Repository:
     name_with_owner: str
     ssh_url: str
     https_url: str
-    default_branch: str
+    default_branch: str | None
     archived: bool
     fork: bool
 
