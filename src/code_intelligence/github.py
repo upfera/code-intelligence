@@ -4,6 +4,7 @@ import json
 import subprocess
 from dataclasses import dataclass
 
+
 @dataclass(frozen=True)
 class Repository:
     name: str
@@ -13,6 +14,7 @@ class Repository:
     default_branch: str
     archived: bool
     fork: bool
+
 
 def run_gh(*args: str) -> str:
     result = subprocess.run(
@@ -25,16 +27,22 @@ def run_gh(*args: str) -> str:
         raise RuntimeError(result.stderr.strip() or "gh command failed")
     return result.stdout
 
+
 def check_auth() -> None:
     result = subprocess.run(["gh", "auth", "status"], text=True, capture_output=True)
     if result.returncode:
         raise RuntimeError("GitHub CLI is not authenticated. Run: gh auth login")
 
+
 def list_repositories(organization: str) -> list[Repository]:
     output = run_gh(
-        "repo", "list", organization,
-        "--limit", "1000",
-        "--json", "name,nameWithOwner,sshUrl,url,defaultBranch,isArchived,isFork",
+        "repo",
+        "list",
+        organization,
+        "--limit",
+        "1000",
+        "--json",
+        "name,nameWithOwner,sshUrl,url,defaultBranchName,isArchived,isFork",
     )
     rows = json.loads(output)
     return [
@@ -43,7 +51,7 @@ def list_repositories(organization: str) -> list[Repository]:
             name_with_owner=row["nameWithOwner"],
             ssh_url=row["sshUrl"],
             https_url=row["url"],
-            default_branch=row["defaultBranch"],
+            default_branch=row["defaultBranchName"],
             archived=row["isArchived"],
             fork=row["isFork"],
         )
