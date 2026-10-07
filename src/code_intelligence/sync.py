@@ -25,6 +25,8 @@ def _git(path: Path, *args: str) -> subprocess.CompletedProcess[str]:
 
 def clone(config: Config, repo: Repository) -> Path:
     target = repo_path(config, repo)
+    if not repo.default_branch:
+        raise RuntimeError("repository has no default branch")
     target.parent.mkdir(parents=True, exist_ok=True)
     url = repo.ssh_url if config.git_protocol == "ssh" else repo.https_url
     subprocess.run(
@@ -69,6 +71,9 @@ def sync(config: Config) -> list[tuple[Repository, Path, str]]:
     results = []
     for repo in list_repositories(config.organization):
         if repo.archived or repo.fork or not selected(repo, config):
+            continue
+        if not repo.default_branch:
+            results.append((repo, repo_path(config, repo), "empty"))
             continue
         path, state = update(config, repo)
         results.append((repo, path, state))
