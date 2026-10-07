@@ -25,7 +25,7 @@ def setup() -> None:
     if not organization:
         raise SystemExit("GitHub organization is required")
 
-    root_default = f"~/code/github/{organization}"
+    root_default = "~/code/github"
     root = input(f"Repository root [{root_default}]: ").strip() or root_default
 
     include = input('Repositories to include [*]: ').strip() or "*"
@@ -33,7 +33,7 @@ def setup() -> None:
 
     config = EXAMPLE.read_text()
     config = config.replace("organization: your-org", f"organization: {organization}")
-    config = config.replace("root: ~/code/github/your-org", f"root: {root}")
+    config = config.replace("root: ~/code/github", f"root: {root}")
     config = config.replace('    - "*"\n  exclude: []', f'    - "{include}"\n  exclude: [{exclude}]')
 
     DEFAULT_CONFIG.parent.mkdir(parents=True, exist_ok=True)
