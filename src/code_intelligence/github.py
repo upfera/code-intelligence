@@ -42,7 +42,7 @@ def list_repositories(organization: str) -> list[Repository]:
         "--limit",
         "1000",
         "--json",
-        "name,nameWithOwner,sshUrl,url,defaultBranchName,isArchived,isFork",
+        "name,nameWithOwner,sshUrl,url,defaultBranchRef,isArchived,isFork",
     )
     rows = json.loads(output)
     return [
@@ -51,7 +51,7 @@ def list_repositories(organization: str) -> list[Repository]:
             name_with_owner=row["nameWithOwner"],
             ssh_url=row["sshUrl"],
             https_url=row["url"],
-            default_branch=row["defaultBranchName"],
+            default_branch=(row["defaultBranchRef"] or {}).get("name"),
             archived=row["isArchived"],
             fork=row["isFork"],
         )
