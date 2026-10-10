@@ -35,7 +35,7 @@ def test_index_state_written_only_after_success(monkeypatch, tmp_path):
     state_path = tmp_path / "state.json"
     monkeypatch.setattr(indexers, "STATE_FILE", state_path)
     monkeypatch.setattr(indexers, "repository_head", lambda _: "abc123")
-    config = Config({"indexers": {"cbm": {"enabled": True, "command": "cbm"}})
+    config = Config({"indexers": {"cbm": {"enabled": True, "command": "cbm"}}})
     def failed(*args, **kwargs):
         raise subprocess.CalledProcessError(1, ["cbm"])
     monkeypatch.setattr(indexers.subprocess, "run", failed)
@@ -55,5 +55,5 @@ def test_index_state_skips_matching_head(monkeypatch, tmp_path):
     state_path.write_text(json.dumps({"github.com/upfera/sample": "abc123"}))
     monkeypatch.setattr(indexers, "STATE_FILE", state_path)
     monkeypatch.setattr(indexers, "repository_head", lambda _: "abc123")
-    config = Config({"indexers": {"cbm": {"enabled": True}})
+    config = Config({"indexers": {"cbm": {"enabled": True}}})
     assert indexers.index_with_cbm(config, path, "upfera/sample") is False
