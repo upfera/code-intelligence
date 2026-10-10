@@ -14,6 +14,8 @@ from .sync import repo_path, selected, sync
 from .tools import install_all, update_all
 
 EXAMPLE = Path(__file__).resolve().parents[2] / "config" / "example.yaml"
+REPOSITORY_ALLOWLIST_HELP = "Comma-separated owner/repository allowlist"
+SYNC_FAILURE_STATES = {"invalid", "fetch-failed", "pull-failed", "clone-failed"}
 
 
 def setup() -> None:
@@ -37,6 +39,29 @@ def setup() -> None:
     print(f"Created {DEFAULT_CONFIG}")
 
 
+def _check_indexer_tools(config: Config) -> int:
+    failures = 0
+    if config.cbm.get("enabled", False):
+        command = config.cbm.get("command", "codebase-memory-mcp")
+        if not shutil.which(command):
+            print(f"FAIL {command}: not found")
+            failures += 1
+        else:
+            result = subprocess.run([command, "--help"], capture_output=True, text=True, timeout=20)
+            if result.returncode:
+                print(f"FAIL {command}: --help exited {result.returncode}")
+                failures += 1
+            else:
+                print(f"OK  {command} responds to --help")
+    if config.raw.get("indexers", {}).get("serena", {}).get("enabled", False):
+        if shutil.which("serena"):
+            print("OK  serena")
+        else:
+            print("FAIL serena: not found")
+            failures += 1
+    return failures
+
+
 def doctor() -> int:
     failures = 0
     for tool in ("git", "gh"):
@@ -56,24 +81,7 @@ def doctor() -> int:
         print(f"OK  config: {DEFAULT_CONFIG}")
         print(f"OK  organization: {config.organization}")
         print(f"OK  repository root: {config.repository_root}")
-        if config.cbm.get("enabled", False):
-            command = config.cbm.get("command", "codebase-memory-mcp")
-            if not shutil.which(command):
-                print(f"FAIL {command}: not found")
-                failures += 1
-            else:
-                result = subprocess.run([command, "--help"], capture_output=True, text=True, timeout=20)
-                if result.returncode:
-                    print(f"FAIL {command}: --help exited {result.returncode}")
-                    failures += 1
-                else:
-                    print(f"OK  {command} responds to --help")
-        if config.raw.get("indexers", {}).get("serena", {}).get("enabled", False):
-            if shutil.which("serena"):
-                print("OK  serena")
-            else:
-                print("FAIL serena: not found")
-                failures += 1
+        failures += _check_indexer_tools(config)
     except Exception as exc:
         print(f"FAIL {exc}")
         failures += 1
@@ -127,6 +135,43 @@ def index_command(force: bool = False, repositories: set[str] | None = None) -> 
     return 1 if failures else 0
 
 
+def _reconcile_repository(repo, path: Path, sync_status: str, config: Config, force: bool) -> dict:
+    item = {"repository": repo.name_with_owner, "path": str(path), "sync": sync_status}
+    if sync_status in {"dirty", "empty"}:
+        item["index"] = "skipped"
+        item["reason"] = "dirty checkout" if sync_status == "dirty" else "no default branch"
+    elif sync_status in SYNC_FAILURE_STATES:
+        item["index"] = "not_attempted"
+        item["error"] = sync_status
+    elif not path.is_dir():
+        item["index"] = "not_attempted"
+        item["error"] = "checkout missing after sync"
+    else:
+        try:
+            did_index = index_with_cbm(config, path, repo.name_with_owner, force=force)
+            item["index"] = "indexed" if did_index else "unchanged"
+        except Exception as exc:
+            item["index"] = "failed"
+            item["error"] = f"{type(exc).__name__}: {exc}"
+    return item
+
+
+def _reconcile_summary(items: list[dict]) -> dict:
+    return {
+        "total": len(items),
+        "indexed": sum(item.get("index") == "indexed" for item in items),
+        "unchanged": sum(item.get("index") == "unchanged" for item in items),
+        "skipped": sum(item.get("index") in {"skipped", "not_attempted"} for item in items),
+        "failed": sum(
+            item.get("index") == "failed"
+            or item.get("sync") in SYNC_FAILURE_STATES
+            or item.get("sync") == "not_found_or_filtered"
+            or (item.get("index") == "not_attempted" and "error" in item)
+            for item in items
+        ),
+    }
+
+
 def reconcile_command(repositories: set[str] | None = None, force: bool = False) -> int:
     started = time.monotonic()
     config = Config.load()
@@ -144,45 +189,24 @@ def reconcile_command(repositories: set[str] | None = None, force: bool = False)
     seen = set()
     for repo, path, sync_status in sync_results:
         seen.add(repo.name_with_owner.casefold())
-        item = {"repository": repo.name_with_owner, "path": str(path), "sync": sync_status}
-        if sync_status in {"dirty", "empty"}:
-            item["index"] = "skipped"
-            item["reason"] = "dirty checkout" if sync_status == "dirty" else "no default branch"
-        elif sync_status in {"invalid", "fetch-failed", "pull-failed", "clone-failed"}:
-            item["index"] = "not_attempted"
-            item["error"] = sync_status
-            report["status"] = "partial_failure"
-        elif not path.is_dir():
-            item["index"] = "not_attempted"
-            item["error"] = "checkout missing after sync"
-            report["status"] = "partial_failure"
-        else:
-            try:
-                did_index = index_with_cbm(config, path, repo.name_with_owner, force=force)
-                item["index"] = "indexed" if did_index else "unchanged"
-            except Exception as exc:
-                item["index"] = "failed"
-                item["error"] = f"{type(exc).__name__}: {exc}"
-                report["status"] = "partial_failure"
+        item = _reconcile_repository(repo, path, sync_status, config, force)
         report["repositories"].append(item)
-
-    if repositories is not None:
-        for name in sorted(repositories - seen):
-            report["repositories"].append({
-                "repository": name, "sync": "not_found_or_filtered",
-                "index": "not_attempted",
-                "error": "Repository was not returned by GitHub or is excluded by configuration",
-            })
+        if "error" in item:
             report["status"] = "partial_failure"
+
+    missing = repositories - seen if repositories is not None else set()
+    for name in sorted(missing):
+        report["repositories"].append({
+            "repository": name,
+            "sync": "not_found_or_filtered",
+            "index": "not_attempted",
+            "error": "Repository was not returned by GitHub or is excluded by configuration",
+        })
+    if missing:
+        report["status"] = "partial_failure"
 
     report["duration_seconds"] = round(time.monotonic() - started, 3)
-    report["summary"] = {
-        "total": len(report["repositories"]),
-        "indexed": sum(item.get("index") == "indexed" for item in report["repositories"]),
-        "unchanged": sum(item.get("index") == "unchanged" for item in report["repositories"]),
-        "skipped": sum(item.get("index") in {"skipped", "not_attempted"} for item in report["repositories"]),
-        "failed": sum(item.get("index") == "failed" or item.get("sync") in {"invalid", "fetch-failed", "pull-failed", "clone-failed", "not_found_or_filtered"} for item in report["repositories"]),
-    }
+    report["summary"] = _reconcile_summary(report["repositories"])
     print(json.dumps(report, sort_keys=True))
     return 0 if report["status"] == "success" else 1
 
