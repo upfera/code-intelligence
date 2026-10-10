@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import json
+import os
 import subprocess
+import tempfile
 from pathlib import Path
 
 from .config import Config
@@ -21,9 +23,25 @@ def _load_state() -> dict[str, str]:
 
 def _save_state(state: dict[str, str]) -> None:
     STATE_FILE.parent.mkdir(parents=True, exist_ok=True)
-    temporary = STATE_FILE.with_suffix(".json.tmp")
-    temporary.write_text(json.dumps(state, indent=2, sort_keys=True) + "\n")
-    temporary.replace(STATE_FILE)
+    payload = json.dumps(state, indent=2, sort_keys=True) + "\n"
+    fd, temporary_name = tempfile.mkstemp(
+        prefix=f".{STATE_FILE.name}.", suffix=".tmp", dir=STATE_FILE.parent
+    )
+    temporary = Path(temporary_name)
+    try:
+        os.fchmod(fd, 0o600)
+        with os.fdopen(fd, "w", encoding="utf-8") as stream:
+            stream.write(payload)
+            stream.flush()
+            os.fsync(stream.fileno())
+        os.replace(temporary, STATE_FILE)
+    except Exception:
+        try:
+            os.close(fd)
+        except OSError:
+            pass
+        temporary.unlink(missing_ok=True)
+        raise
 
 
 def repository_head(path: Path) -> str:
