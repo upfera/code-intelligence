@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import os
 import subprocess
+import sys
 import tempfile
 from pathlib import Path
 
@@ -65,15 +66,15 @@ def index_with_cbm(config: Config, path: Path, repository: str, force: bool = Fa
     key = f"github.com/{repository.lower()}"
     state = _load_state()
     if not force and state.get(key) == head:
-        print(f"SKIP index unchanged: {repository} ({head[:12]})")
+        print(f"SKIP index unchanged: {repository} ({head[:12]})", file=sys.stderr)
         return False
     command = cbm.get("command", "codebase-memory-mcp")
     project_name = cbm_project_name(repository)
     subprocess.run(
         [command, "cli", "index_repository", "--repo-path", str(path), "--name", project_name],
-        check=True, text=True, timeout=int(cbm.get("timeout_seconds", 1800)),
+        check=True, text=True, timeout=int(cbm.get("timeout_seconds", 1800)), stdout=sys.stderr,
     )
     state[key] = head
     _save_state(state)
-    print(f"INDEXED {project_name} @ {head[:12]}")
+    print(f"INDEXED {project_name} @ {head[:12]}", file=sys.stderr)
     return True
