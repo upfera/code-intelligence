@@ -99,7 +99,7 @@ def index_command(force: bool = False) -> int:
             print(f"SKIP missing: {repo.name_with_owner}")
             continue
         try:
-            index_with_cbm(config, path, force=force)
+            index_with_cbm(config, path, repo.name_with_owner, force=force)
         except Exception as exc:
             print(f"WARN index failed {repo.name_with_owner}: {exc}")
     return 0
