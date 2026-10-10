@@ -31,7 +31,7 @@ def setup() -> None:
     config = EXAMPLE.read_text()
     config = config.replace("organization: your-org", f"organization: {organization}")
     config = config.replace("root: ~/code/github", f"root: {root}")
-    config = config.replace('    - "*"\\n  exclude: []', f'    - "{include}"\\n  exclude: [{exclude}]')
+    config = config.replace('    - "*"\n  exclude: []', f'    - "{include}"\n  exclude: [{exclude}]')
     DEFAULT_CONFIG.parent.mkdir(parents=True, exist_ok=True)
     DEFAULT_CONFIG.write_text(config)
     print(f"Created {DEFAULT_CONFIG}")
