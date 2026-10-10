@@ -2,106 +2,68 @@
 
 Local GitHub repository synchronization and code-intelligence orchestration.
 
-The intended model is:
-
-- **Codebase Memory (CBM)** is persistent and pre-indexes the default branch of every selected repository.
-- **Serena** is installed once but started for the active OpenHands task/workspace. It sees the exact checkout and agent changes.
-- Repository synchronization is deterministic and safe for normal user operation.
+- **Codebase Memory (CBM)** is the persistent index for selected repositories' default branches.
+- **Serena** is task/workspace-scoped and is not globally pre-indexed.
+- Synchronization is deterministic and never overwrites dirty checkouts.
 
 ## Quick start
 
-Requirements:
-
-- Python 3.11+
-- git
-- GitHub CLI (`gh`) authenticated to the target organization
-
-From a checkout of this repository:
+Requirements: Python 3.11+, Git, GitHub CLI (gh) authenticated to the target organization, and CBM if indexing is enabled.
 
     python3 -m venv .venv
-    . .venv/bin/activate
-    python -m pip install -e .
+    .venv/bin/python -m pip install -e .
+    .venv/bin/code-intelligence setup
+    .venv/bin/code-intelligence doctor
+    .venv/bin/code-intelligence bootstrap
 
-Then:
+Use the executable directly in scripts and automation; activating the virtual environment is not required:
 
-    code-intelligence bootstrap
-
-The bootstrap installs the optional code-intelligence tools, creates the user configuration, synchronizes the selected repositories, and pre-indexes them with CBM.
+    /path/to/code-intelligence/.venv/bin/code-intelligence reconcile --repos upfera/code-intelligence,upfera/junie-extensions
 
 ## Configuration
 
-Default configuration:
-
-    ~/.config/code-intelligence/config.yaml
-
-Example:
+Default configuration: ~/.config/code-intelligence/config.yaml.
 
     github:
       organization: upfera
-
     repositories:
-      root: ~/code/github/upfera
-      include:
-        - "*"
+      # Parent of organization/repository directories, not the organization directory itself.
+      root: ~/workspace/github
+      include: ["*"]
       exclude: []
-
     git:
       protocol: ssh
-
     indexers:
       cbm:
         enabled: true
         command: codebase-memory-mcp
+        timeout_seconds: 1800
       serena:
         enabled: true
+    tools:
+      auto_update: false
 
 ## Commands
 
-    code-intelligence setup
-    code-intelligence doctor
-    code-intelligence tools-install
-    code-intelligence tools-update
-    code-intelligence sync
-    code-intelligence index
-    code-intelligence bootstrap
+- setup: create the user configuration.
+- doctor: check Git, GitHub authentication, configuration and CBM CLI responsiveness.
+- sync [--repos owner/repo,...]: synchronize selected repositories.
+- index [--repos owner/repo,...] [--force]: index selected repositories.
+- reconcile [--repos owner/repo,...] [--force]: synchronize and index in one process and print a JSON report.
+- tools-install / tools-update: explicitly manage optional tools.
+- bootstrap: initial setup, installation, sync and full indexing.
 
-`sync` only synchronizes repositories. `index` pre-indexes selected repositories with CBM.
+The --repos option is an exact allowlist of GitHub owner/repository identities. It is useful for automation and does not expand the configured scope. A repository excluded by the normal include/exclude filters is not synchronized or indexed.
 
-## Indexing model
+## Incremental indexing
 
-Each GitHub repository receives a stable CBM project name based on its canonical owner/repository identity:
+Each repository receives a stable CBM project name based on its canonical GitHub identity, e.g. github-upfera-code-intelligence. The local state file at ~/.local/state/code-intelligence/index-state.json stores the last HEAD whose CBM indexing command returned success.
 
-    github-upfera-<repository>
+A reconciliation run skips indexing when the recorded HEAD matches the checkout HEAD. Missing state, a changed HEAD or --force triggers indexing. The state file is only a local optimization: it is not independent proof that the CBM project still exists or that its index has not been removed. If CBM's project inventory is unavailable, that limitation must be treated explicitly rather than claiming an independently verified index.
 
-For example, `upfera/openhands-automations` is indexed as `github-upfera-openhands-automations`. The index-state file uses the canonical identity `github.com/upfera/openhands-automations`, not the local checkout path, so moving the checkout does not create a new state entry.
-
-CBM indexes the repository's **default branch** in the local checkout. This is the persistent organization-wide code intelligence corpus.
-
-Serena is deliberately **not** pre-indexed for every repository. OpenHands should start Serena against the active task workspace, for example:
-
-    ~/workspace/project/<conversation-id>
-
-This gives the semantic layer the exact current workspace state, including uncommitted agent changes.
-
-## Safety
-
-- Runs as the normal user.
-- Never implicitly uses sudo.
-- Does not delete repositories that disappear from GitHub.
-- Does not overwrite dirty local repositories.
-- CBM is persistent; Serena is task-scoped.
+Dirty repositories are skipped. Git synchronization uses fast-forward-only updates. Reconciliation does not delete local clones or CBM projects. A partial failure produces a non-zero exit status and a machine-readable report.
 
 ## Architecture
 
-    GitHub
-       |
-       v
-    code-intelligence
-       |
-       +--> sync --> ~/code/github/upfera/*
-       |
-       +--> CBM --> persistent index of default branches
-       |
-       +--> Serena --> launched by the active agent/task for its workspace
-
-The MCP interface remains intentionally thin and should call the same core services as the CLI.
+GitHub -> code-intelligence reconcile -> local default-branch clones -> CBM
+Serena -> started separately for the active agent/task workspace
