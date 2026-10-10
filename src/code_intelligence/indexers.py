@@ -33,27 +33,47 @@ def repository_head(path: Path) -> str:
     return result.stdout.strip()
 
 
-def index_with_cbm(config: Config, path: Path, force: bool = False) -> bool:
+def cbm_project_name(repository: str) -> str:
+    """Return a stable CBM name derived from the GitHub owner/repository."""
+    return f"github-{repository.replace('/', '-')}"
+
+
+def index_with_cbm(
+    config: Config,
+    path: Path,
+    repository: str,
+    force: bool = False,
+) -> bool:
     cbm = config.cbm
     if not cbm.get("enabled", False):
         return False
 
     head = repository_head(path)
-    key = str(path)
+    # The GitHub identity, not the checkout location, is the stable state key.
+    key = f"github.com/{repository.lower()}"
     state = _load_state()
 
     if not force and state.get(key) == head:
-        print(f"SKIP index unchanged: {path}")
+        print(f"SKIP index unchanged: {repository} ({head[:12]})")
         return False
 
     command = cbm.get("command", "codebase-memory-mcp")
+    project_name = cbm_project_name(repository)
     subprocess.run(
-        [command, "cli", "index_repository", "--repo-path", str(path)],
+        [
+            command,
+            "cli",
+            "index_repository",
+            "--repo-path",
+            str(path),
+            "--name",
+            project_name,
+        ],
         check=True,
         text=True,
     )
 
     state[key] = head
     _save_state(state)
-    print(f"INDEXED {path} @ {head[:12]}")
+    print(f"INDEXED {project_name} @ {head[:12]}")
     return True

@@ -65,15 +65,17 @@ Example:
     code-intelligence index
     code-intelligence bootstrap
 
-`sync` only synchronizes repositories. `index` synchronizes first and then pre-indexes selected clean repositories with CBM.
+`sync` only synchronizes repositories. `index` pre-indexes selected repositories with CBM.
 
 ## Indexing model
 
-CBM indexes the repository's **default branch** in the canonical local checkout:
+Each GitHub repository receives a stable CBM project name based on its canonical owner/repository identity:
 
-    ~/code/github/upfera/<repo>
+    github-upfera-<repository>
 
-This is the persistent organization-wide code intelligence corpus.
+For example, `upfera/openhands-automations` is indexed as `github-upfera-openhands-automations`. The index-state file uses the canonical identity `github.com/upfera/openhands-automations`, not the local checkout path, so moving the checkout does not create a new state entry.
+
+CBM indexes the repository's **default branch** in the local checkout. This is the persistent organization-wide code intelligence corpus.
 
 Serena is deliberately **not** pre-indexed for every repository. OpenHands should start Serena against the active task workspace, for example:
 
